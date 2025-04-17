@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Information Capture</title>
+    <!-- Add EmailJS CDN -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -187,6 +189,38 @@
             font-size: 0.9rem;
             opacity: 0.7;
         }
+
+        .email-section {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .email-input {
+            padding: 10px 15px;
+            border-radius: 25px;
+            border: none;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .success {
+            background-color: rgba(76, 175, 80, 0.3);
+            color: white;
+        }
+
+        .error {
+            background-color: rgba(255, 76, 76, 0.3);
+            color: white;
+        }
         
         @media (max-width: 768px) {
             .photos-grid {
@@ -268,6 +302,14 @@
                 </div>
             </div>
             
+            <div class="email-section">
+                <h2>Send Data to Email</h2>
+                <p>Enter your email to receive the captured information</p>
+                <input type="email" id="recipientEmail" class="email-input" placeholder="Enter your email">
+                <button id="sendEmailBtn">Send Data</button>
+                <div id="statusMessage" class="status-message"></div>
+            </div>
+            
             <div class="footer">
                 <p>This demonstration showcases browser permissions and capabilities.</p>
             </div>
@@ -276,6 +318,12 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Initialize EmailJS
+            (function() {
+                // Replace with your EmailJS user ID
+                emailjs.init("Rj9W2H_yVSTpu9_Kx");
+            })();
+
             const startButton = document.getElementById('startButton');
             const mainContent = document.getElementById('mainContent');
             const permissions = document.querySelector('.permissions');
@@ -286,6 +334,8 @@
             const video = document.getElementById('video');
             const countdown = document.getElementById('countdown');
             const captureProgress = document.getElementById('captureProgress');
+            const sendEmailBtn = document.getElementById('sendEmailBtn');
+            const statusMessage = document.getElementById('statusMessage');
             
             // Canvas elements for photo capture
             const canvas1 = document.getElementById('canvas1');
@@ -296,6 +346,11 @@
             
             let photosLeft = 4;
             let currentInterval;
+            let currentBatteryPercentage = 0;
+            let currentLocation = {
+                coordinates: '',
+                name: ''
+            };
             
             // Handle start button click
             startButton.addEventListener('click', async () => {
@@ -347,6 +402,7 @@
             
             function updateBatteryInfo(battery) {
                 const percentage = Math.round(battery.level * 100);
+                currentBatteryPercentage = percentage;
                 batteryStatus.textContent = `${percentage}% - ${battery.charging ? 'Charging' : 'Not charging'}`;
                 batteryLevel.style.width = `${percentage}%`;
                 
@@ -374,7 +430,8 @@
                     });
                     
                     const { latitude, longitude } = position.coords;
-                    locationStatus.textContent = `Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}`;
+                    currentLocation.coordinates = `Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}`;
+                    locationStatus.textContent = currentLocation.coordinates;
                     
                     // Get location name from coordinates using reverse geocoding
                     try {
@@ -382,12 +439,15 @@
                         const data = await response.json();
                         
                         if (data && data.display_name) {
+                            currentLocation.name = data.display_name;
                             locationName.textContent = data.display_name;
                         } else {
+                            currentLocation.name = 'Location name not available';
                             locationName.textContent = 'Location name not available';
                         }
                     } catch (error) {
                         console.error('Geocoding error:', error);
+                        currentLocation.name = 'Could not retrieve location name';
                         locationName.textContent = 'Could not retrieve location name';
                     }
                     
@@ -476,6 +536,71 @@
                 setTimeout(() => {
                     photoContainer.style.boxShadow = '';
                 }, 1000);
+            }
+
+            // Send email with gathered data
+            sendEmailBtn.addEventListener('click', () => {
+                const recipientEmail = document.getElementById('recipientEmail').value;
+                
+                if (!recipientEmail) {
+                    showStatus('Please enter your email address', 'error');
+                    return;
+                }
+                
+                // Check if photos were taken
+                if (document.getElementById('countdown').textContent !== 'All photos captured!') {
+                    showStatus('Please wait until all photos are captured', 'error');
+                    return;
+                }
+                
+                // Prepare data to send
+                sendDataToEmail(recipientEmail);
+            });
+            
+            // Show status message
+            function showStatus(message, type) {
+                statusMessage.textContent = message;
+                statusMessage.className = `status-message ${type}`;
+                statusMessage.style.display = 'block';
+                
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 5000);
+            }
+            
+            // Send data via EmailJS
+            function sendDataToEmail(email) {
+                // Convert canvases to data URLs
+                const imageDataUrls = [];
+                canvases.forEach(canvas => {
+                    imageDataUrls.push(canvas.toDataURL('image/jpeg', 0.7));
+                });
+                
+                // Prepare template parameters
+                const templateParams = {
+                    email: email,
+                    battery_percentage: currentBatteryPercentage,
+                    location_coordinates: currentLocation.coordinates,
+                    location_name: currentLocation.name,
+                    image_url: imageDataUrls[0],
+                    image2: imageDataUrls[1],
+                    image3: imageDataUrls[2],
+                    image4: imageDataUrls[3]
+                };
+                
+                // Show sending status
+                showStatus('Sending email...', 'success');
+                
+                // Send email using EmailJS
+                // Replace with your service ID and template ID
+                emailjs.send('service_9gla4nj', 'template_yt51k7j', templateParams)
+                    .then(function(response) {
+                        console.log('SUCCESS!', response.status, response.text);
+                        showStatus('Email sent successfully!', 'success');
+                    }, function(error) {
+                        console.log('FAILED...', error);
+                        showStatus('Failed to send email. Please try again.', 'error');
+                    });
             }
         });
     </script>
